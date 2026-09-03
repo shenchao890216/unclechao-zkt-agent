@@ -1,0 +1,21 @@
+# 密钥与本地配置
+.env
+.claude/
+
+# 卡片盒数据(私人思考数据,永远不进仓库)
+zk/
+
+# 渲染产物(内嵌卡片全文)
+graph.html
+guide.html
+
+# 个人 Claude 技能配置(含本机路径)
+skills/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/

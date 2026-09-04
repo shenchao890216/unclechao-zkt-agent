@@ -13,7 +13,9 @@ AI 消化你的输入成原子卡片草稿——但**转正和删除的签字权
 ## 安装
 
 ```bash
-pip install .
+pip install .                       # 克隆后本地安装
+# 或
+pip install git+https://github.com/shenchao890216/unclechao-zkt-agent
 ```
 
 ## 配置

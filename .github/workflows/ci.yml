@@ -32,8 +32,9 @@ jobs:
           ! grep -rnE "sk-[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|BEGIN (RSA |EC )?PRIVATE KEY" \
             --include="*.py" --include="*.md" --include="*.toml" --include="*.yml" .
       - name: 个人路径扫描
+        # CLAUDE.md 是安全规范的讲解文档,本身包含模式示例,故排除
         run: |
-          ! grep -rn "/Users/\|C:\\\\Users\\\\" --include="*.py" --include="*.md" .
+          ! grep -rn "/Users/\|C:\\\\Users\\\\" --include="*.py" --include="*.md" --exclude=CLAUDE.md .
       - name: 敏感文件不得被跟踪
         run: |
           tracked=$(git ls-files)

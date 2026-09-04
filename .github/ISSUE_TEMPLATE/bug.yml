@@ -1,0 +1,29 @@
+name: Bug 报告
+description: 报告一个问题
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 预期 vs 实际,附上报错截图或日志
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      placeholder: "1. zkt 进入对话\n2. 输入 ..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: zkt 版本 / 提交号
+    validations:
+      required: true
+  - type: dropdown
+    id: model
+    attributes:
+      label: 模型服务商
+      options: [DeepSeek, 其他 OpenAI 兼容接口]

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -36,6 +37,13 @@ MODEL = os.environ.get("ZKT_MODEL", "deepseek-chat")
 
 def make_client() -> OpenAI:
     return OpenAI(api_key=API_KEY, base_url=BASE_URL)
+
+
+class AgentInterrupted(Exception):
+    """用户按了打断(如 Ctrl+C),agent 应立即停止本轮。"""
+
+
+INTERRUPT = threading.Event()  # 置位后,循环与流式读块处尽快抛 AgentInterrupted
 
 # 签字钩子:由 REPL 注入。agent 只能提议,执行前必须经这个钩子得到人的 y。
 # 非交互环境(ingest、write_agent)没有钩子,签字类工具自动拒绝。
@@ -531,6 +539,9 @@ def _call_model_once(client, messages: list, tools: list, stream: bool = True, o
         model=MODEL, messages=messages, tools=tools, stream=True,
     )
     for chunk in response:
+        if INTERRUPT.is_set():
+            response.close()
+            raise AgentInterrupted()
         if not chunk.choices:
             continue
         delta = chunk.choices[0].delta
@@ -603,6 +614,8 @@ def run_agent(
             print(f"  工具出错: {evt['error']}")
 
     for turn in range(max_turns):
+        if INTERRUPT.is_set():
+            raise AgentInterrupted()
         if on_event:
             on_event({"type": "turn", "n": turn + 1})
         result = _call_model(client, messages, tools, stream=stream, on_delta=on_delta)

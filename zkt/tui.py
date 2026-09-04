@@ -42,7 +42,7 @@ HELP = """\
 | /drafts | 看文章草稿 |
 | /home | 查看/设置盒子路径 |
 | /compact | 压缩对话历史 |
-| /resume | 恢复上次会话 |
+| /resume | 列出历史会话,/resume N 恢复 |
 | /exit | 退出(Ctrl+Q 亦可) |
 
 其余任何话都交给 agent 处理。
@@ -144,7 +144,10 @@ class CommandInput(Input):
 # ---------------------------------------------------------------------------
 
 class ZktApp(App):
-    BINDINGS = [("ctrl+q", "quit", "退出")]
+    BINDINGS = [
+        ("ctrl+q", "quit", "退出"),
+        ("ctrl+c", "interrupt", "打断本轮"),
+    ]
 
     CSS = """
     #chat { height: 1fr; padding: 1 2; }
@@ -188,7 +191,7 @@ class ZktApp(App):
         self._stream_buf = ""
         self._add_markdown(WELCOME, "sys-hint")
         if sessions := _list_sessions():
-            self._add_static(f"(检测到 {len(sessions)} 份历史会话,/resume 恢复最近一次)")
+            self._add_static(f"(检测到 {len(sessions)} 份历史会话,/resume 查看列表)")
         self.query_one(CommandInput).focus()
 
     # ---- 命令补全 ------------------------------------------------------
@@ -220,6 +223,9 @@ class ZktApp(App):
         elif event.key == "escape":
             self._hide_suggest()
         elif event.key == "enter":
+            value = self.query_one(CommandInput).value.strip()
+            if value in {f"/{c}" for c in SLASH_COMMANDS}:
+                return False  # 已是完整命令,回车交给输入框直接执行
             if (idx := suggest.highlighted) is not None:
                 self._pick_command(idx)
         else:
@@ -324,7 +330,22 @@ class ZktApp(App):
         if not sessions:
             self._add_static("没有历史会话")
             return
-        idx = int(args[0]) - 1 if args and args[0].isdigit() else 0
+        if not args:
+            # 无参数:列出会话清单,提示 /resume N 选择
+            rows = ["| # | 时间 | 消息数 | 开头 |", "|---|---|---|---|"]
+            for i, path in enumerate(sessions[:10], 1):
+                msgs = _load_session(path)
+                first_user = next(
+                    (str(m.get("content", ""))[:24] for m in msgs if m.get("role") == "user"),
+                    "(无)",
+                )
+                rows.append(f"| {i} | {path.stem} | {len(msgs)} | {first_user} |")
+            self._add_markdown("\n".join(rows) + "\n\n`/resume N` 恢复对应会话")
+            return
+        if not args[0].isdigit():
+            self._add_static("用法: /resume N", "err")
+            return
+        idx = int(args[0]) - 1
         if not 0 <= idx < len(sessions):
             self._add_static(f"序号超范围: 1~{len(sessions)}", "err")
             return
@@ -334,10 +355,21 @@ class ZktApp(App):
             content = str(msg.get("content", ""))[:300]
             self._add_markdown(f"> [{msg['role']}] {content}")
 
+    def action_interrupt(self) -> None:
+        """Ctrl+C:打断当前轮,会话保留。"""
+        import agent
+
+        agent.INTERRUPT.set()
+        self._add_static("⏹ 正在打断…", "err")
+
     # ---- agent 对话 ---------------------------------------------------
 
     @work(thread=True)
     def _ask(self, text: str) -> None:
+        import agent
+
+        agent.INTERRUPT.clear()  # 新一轮开始,清掉上次的中断标记
+
         def on_delta(chunk: str) -> None:
             self.call_from_thread(self._feed_stream, chunk)
 
@@ -353,8 +385,14 @@ class ZktApp(App):
 
         try:
             run_agent(text, history=self.history, on_delta=on_delta, on_event=on_event)
+        except agent.AgentInterrupted:
+            self.call_from_thread(self._add_static, "⏹ 本轮已打断,会话保留,直接说下一句即可", "sys-hint")
         except Exception as e:  # noqa: BLE001 —— 任何异常都进对话区,不崩 TUI
-            self.call_from_thread(self._add_markdown, f"**出错:** {type(e).__name__}: {e}", "err")
+            self.call_from_thread(
+                self._add_markdown,
+                f"⚠ **出错** `{type(e).__name__}`:{e}\n\n网络抖动可重发上一句;反复出现请检查 `.env` 配置。",
+                "err",
+            )
         finally:
             self.call_from_thread(self._feed_done)
 
